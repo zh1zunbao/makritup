@@ -23,6 +23,10 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
             converter::wav2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert WAV: {}", e))
         }
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+            converter::docx2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert DOCX: {}", e))
+        }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
 }

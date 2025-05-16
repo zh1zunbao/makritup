@@ -17,6 +17,7 @@ use std::{env, path::PathBuf, fs};
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub model_path: PathBuf,
+    pub image_path: PathBuf,
 }
 
 
