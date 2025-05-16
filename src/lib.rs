@@ -27,6 +27,10 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
             converter::docx2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert DOCX: {}", e))
         }
+        "image/jpeg" | "image/png" | "image/gif" => {
+            converter::image2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert image: {}", e))
+        }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
 }

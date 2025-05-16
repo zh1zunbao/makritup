@@ -1,2 +1,3 @@
 model_path = "vosk/models/vosk-model-en-us"
 image_path = "./.assets"
+is_ai_enpower = true
