@@ -1,24 +1,66 @@
 [config]
 default = "build"
 
+
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+
+[tasks.get-vosk]
+description = "Download Vosk dynamic library"
+condition = { files_not_exist = ["vosk/models/vosk-model-en-us"] }
+script_runner = "@shell"
+script = '''
+mkdir -p vosk/models
+rm -rf vosk/models/vosk-model-en-us.zip
+curl -L -o vosk/models/vosk-model-en-us.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+unzip -o vosk/models/vosk-model-en-us.zip -d vosk/models
+rm -rf vosk/models/vosk-model-en-us.zip
+mv vosk/models/vosk-model-small-en-us-0.15 vosk/models/vosk-model-en-us
+
+mkdir -p vosk/lib
+rm -rf vosk/lib/*
+curl -L -o vosk/lib/libvosk-linux.zip https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip
+curl -L -o vosk/lib/libvosk-win.zip https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-win64-0.3.45.zip
+unzip -o vosk/lib/libvosk-linux.zip -d vosk/lib
+unzip -o vosk/lib/libvosk-win.zip -d vosk/lib
+rm -rf vosk/lib/libvosk-linux.zip
+rm -rf vosk/lib/libvosk-win.zip
+'''
+
+
 [tasks.copy-vosk-libs]
 description = "Copy Vosk dynamic library to target dirs"
-script = [
-  "mkdir -p target/debug",
-  "mkdir -p target/release",
-  "cp vosk/libvosk.* target/debug/",
-  "cp vosk/libvosk.* target/release/"
-]
+script_runner = "@shell"
+script = '''
+mkdir -p vosk
+mkdir -p target/debug
+mkdir -p target/release
+
+cp vosk/lib/vosk-linux-x86_64-0.3.45/libvosk.so target/debug/
+cp vosk/lib/vosk-linux-x86_64-0.3.45/libvosk.so target/release/
+
+cp vosk/lib/vosk-win64-0.3.45/lib* target/debug/
+cp vosk/lib/vosk-win64-0.3.45/lib* target/release/
+'''
 
 
 [tasks.build]
 description = "Compile the project (debug)"
+dependencies = ["copy-vosk-libs", "get-vosk"]
 command = "cargo"
 args = ["build"]
 
 
-[tasks.run]
-description = "Run the binary"
-dependencies  = ["build", "copy-vosk-libs"]
+[tasks.run-wav]
+description = "Run the project with a WAV file"
+dependencies = ["build"]
 command = "cargo"
-args    = ["run", "--bin", "markitup"]
+args = ["run", "--bin", "markitup", "--", "bench/test.wav"]

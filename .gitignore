@@ -1,2 +1,8 @@
 /target
+/bench
 Cargo.lock
+
+vosk/lib
+vosk/models
+
+.vscode/
