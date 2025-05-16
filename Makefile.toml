@@ -38,6 +38,7 @@ rm -rf vosk/lib/libvosk-win.zip
 
 [tasks.copy-vosk-libs]
 description = "Copy Vosk dynamic library to target dirs"
+dependencies = ["get-vosk"]
 script_runner = "@shell"
 script = '''
 mkdir -p vosk
@@ -54,7 +55,7 @@ cp vosk/lib/vosk-win64-0.3.45/lib* target/release/
 
 [tasks.build]
 description = "Compile the project (debug)"
-dependencies = ["copy-vosk-libs", "get-vosk"]
+dependencies = ["copy-vosk-libs"]
 command = "cargo"
 args = ["build"]
 
