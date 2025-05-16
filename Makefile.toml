@@ -1,0 +1,15 @@
+[config]
+default = "build"
+
+
+[tasks.build]
+description = "Compile the project (debug)"
+command = "cargo"
+args = ["build"]
+
+
+[tasks.run]
+description = "Run the binary"
+dependencies  = ["build"]
+command = "cargo"
+args    = ["run", "--bin", "markitup"]

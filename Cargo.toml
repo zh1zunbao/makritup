@@ -1,0 +1,12 @@
+[package]
+name = "markitup"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+infer = "0.3"
+
+# for wav -> markdown
+vosk = "0.3.1" # 离线语音识别
+hound = "3.5" # WAV 音频处理
+anyhow = "1.0"

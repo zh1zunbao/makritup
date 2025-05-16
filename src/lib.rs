@@ -1,0 +1,35 @@
+use infer;
+pub mod converter;
+
+pub struct ConverterFile {
+    pub file_path: Option<String>,
+    pub file_stream: Vec<u8>,
+}
+
+// byte_stream -> String
+pub fn convert(file: ConverterFile) -> Result<String, String> {
+    let kind = infer::get(&file.file_stream)
+        .ok_or_else(|| "Could not determine file type".to_string())?;
+
+    let mime_type = kind.mime_type();
+
+    if cfg!(debug_assertions) {
+        dbg!(mime_type);
+    }
+
+    match mime_type {
+        _ => Err(format!("Unsupported file type: {}", mime_type)),
+    }
+}
+
+pub fn convert_from_path(file_path: &str) -> Result<String, String> {
+    let file_stream = std::fs::read(file_path)
+        .map_err(|e| format!("Failed to read file {}: {}", file_path, e))?;
+
+    let file = ConverterFile {
+        file_path: Some(file_path.to_string()),
+        file_stream,
+    };
+
+    convert(file)
+}
