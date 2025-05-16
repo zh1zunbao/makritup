@@ -1,6 +1,7 @@
 use hound::WavReader;
 use std::io::Cursor;
 use vosk::{Model, Recognizer};
+use crate::config::SETTINGS;
 
 // Helper function to read wave data from a byte stream
 fn retrieve_wave_samples(stream: &[u8]) -> Result<(Vec<i16>, u32), String> {
@@ -37,7 +38,10 @@ fn retrieve_wave_samples(stream: &[u8]) -> Result<(Vec<i16>, u32), String> {
 }
 
 pub fn run(file_stream: &[u8]) -> Result<String, String> {
-    let model_path = "/tmp/models/vosk-model-small-en-us-0.15"; // Assuming this path is accessible
+
+    let cfg = &SETTINGS;
+    let model_path = cfg.model_path.to_str()
+        .ok_or_else(|| "Failed to convert model path to string".to_string())?;
 
     // ok_or_else:
     //   作用: 用于将 Option<T> 类型转换为 Result<T, E> 类型。

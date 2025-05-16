@@ -1,4 +1,5 @@
 use infer;
+mod config;
 pub mod converter;
 
 pub struct ConverterFile {
