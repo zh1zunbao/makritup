@@ -1,7 +1,3 @@
-[config]
-default = "build"
-
-
 [tasks.format]
 install_crate = "rustfmt"
 command = "cargo"
@@ -65,3 +61,15 @@ description = "Run the project with a WAV file"
 dependencies = ["build"]
 command = "cargo"
 args = ["run", "--bin", "markitup", "--", "bench/test.wav"]
+
+[tasks.run-docx]
+description = "Run the project with a DOCX file"
+dependencies = ["build"]
+command = "cargo"
+args = ["run", "--bin", "markitup", "--", "bench/test.docx"]
+
+[tasks.run-image]
+description = "Run the project with an image file"
+dependencies = ["build"]
+command = "cargo"
+args = ["run", "--bin", "markitup", "--", "bench/test.png"]
