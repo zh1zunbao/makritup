@@ -18,6 +18,10 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
     }
 
     match mime_type {
+        "audio/x-wav" | "audio/wav" | "audio/wave" => {
+            converter::wav2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert WAV: {}", e))
+        }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
 }

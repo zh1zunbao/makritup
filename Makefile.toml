@@ -1,6 +1,15 @@
 [config]
 default = "build"
 
+[tasks.copy-vosk-libs]
+description = "Copy Vosk dynamic library to target dirs"
+script = [
+  "mkdir -p target/debug",
+  "mkdir -p target/release",
+  "cp vosk/libvosk.* target/debug/",
+  "cp vosk/libvosk.* target/release/"
+]
+
 
 [tasks.build]
 description = "Compile the project (debug)"
@@ -10,6 +19,6 @@ args = ["build"]
 
 [tasks.run]
 description = "Run the binary"
-dependencies  = ["build"]
+dependencies  = ["build", "copy-vosk-libs"]
 command = "cargo"
 args    = ["run", "--bin", "markitup"]
