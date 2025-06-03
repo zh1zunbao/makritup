@@ -2,8 +2,10 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
-use crate::generator::image2md;
+use crate::generator::image2md::{self, ImageProcessingMode};
+use crate::config::SETTINGS;
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 struct TableData {
@@ -116,6 +118,15 @@ fn process_image_element(
     element: &quick_xml::events::BytesStart,
     images: &HashMap<String, Vec<u8>>
 ) -> Result<Option<String>, String> {
+    let cfg = &SETTINGS;
+    
+    // Determine processing mode based on configuration
+    let mode = if cfg.image_path.as_os_str().is_empty() {
+        ImageProcessingMode::Base64
+    } else {
+        ImageProcessingMode::SaveToFile
+    };
+    
     // Extract r:embed attribute to find the image
     for attr_result in element.attributes() {
         let attr = attr_result.map_err(|e| format!("Error reading attribute: {}", e))?;
@@ -132,9 +143,17 @@ fn process_image_element(
                    filename.ends_with(".gif") ||
                    filename.ends_with(".webp") {
                     
-                    // Use the image2md module to process the image
-                    let image_md = image2md::run(image_data)?;
-                    return Ok(Some(image_md));
+                    // Use the image2md module to process the image with proper mode
+                    let image_md = image2md::run_with_mode(image_data, mode)?;
+                    
+                    // Handle relative paths if needed
+                    let final_md = if !cfg.image_path.as_os_str().is_empty() {
+                        adjust_image_path_in_markdown(image_md)?
+                    } else {
+                        image_md
+                    };
+                    
+                    return Ok(Some(final_md));
                 }
             }
             
@@ -143,6 +162,96 @@ fn process_image_element(
         }
     }
     Ok(None)
+}
+
+fn adjust_image_path_in_markdown(markdown: String) -> Result<String, String> {
+    let cfg = &SETTINGS;
+    
+    // If we have an output path and it's not empty, try to make image paths relative
+    if let Some(output_path) = &cfg.output_path {
+        if !output_path.as_os_str().is_empty() {
+            // Calculate relative path from output directory to image directory
+            let output_dir = output_path.parent().unwrap_or(Path::new("."));
+            
+            if let Ok(relative_path) = cfg.image_path.strip_prefix(output_dir) {
+                let relative_str = relative_path.to_string_lossy();
+                
+                // Simple approach: since we control image generation, we can do direct replacement
+                // Look for patterns like ![alt](filename.ext) and replace with ![alt](relative_path/filename.ext)
+                let lines: Vec<&str> = markdown.lines().collect();
+                let mut result = String::new();
+                
+                for line in lines {
+                    if line.contains("![") && line.contains("](") {
+                        // Find and replace image references
+                        let mut new_line = line.to_string();
+                        
+                        // Look for image markdown pattern and extract filename
+                        if let Some(start) = line.find("](") {
+                            if let Some(end) = line[start+2..].find(")") {
+                                let path_part = &line[start+2..start+2+end];
+                                
+                                // Check if it's just a filename (no path separators)
+                                if !path_part.contains('/') && !path_part.contains('\\') && 
+                                   (path_part.ends_with(".png") || path_part.ends_with(".jpg") || 
+                                    path_part.ends_with(".jpeg") || path_part.ends_with(".gif") || 
+                                    path_part.ends_with(".webp")) {
+                                    
+                                    let new_path = format!("{}/{}", relative_str, path_part);
+                                    new_line = line.replace(&format!("]({})", path_part), &format!("]({})", new_path));
+                                }
+                            }
+                        }
+                        result.push_str(&new_line);
+                    } else {
+                        result.push_str(line);
+                    }
+                    result.push('\n');
+                }
+                
+                return Ok(result);
+            }
+        }
+    }
+    
+    // If no output path configured or empty (stdout), use absolute paths
+    let abs_path = cfg.image_path.canonicalize()
+        .unwrap_or_else(|_| cfg.image_path.clone())
+        .to_string_lossy()
+        .to_string();
+    
+    let lines: Vec<&str> = markdown.lines().collect();
+    let mut result = String::new();
+    
+    for line in lines {
+        if line.contains("![") && line.contains("](") {
+            // Find and replace image references with absolute paths
+            let mut new_line = line.to_string();
+            
+            // Look for image markdown pattern and extract filename
+            if let Some(start) = line.find("](") {
+                if let Some(end) = line[start+2..].find(")") {
+                    let path_part = &line[start+2..start+2+end];
+                    
+                    // Check if it's just a filename (no path separators)
+                    if !path_part.contains('/') && !path_part.contains('\\') && 
+                       (path_part.ends_with(".png") || path_part.ends_with(".jpg") || 
+                        path_part.ends_with(".jpeg") || path_part.ends_with(".gif") || 
+                        path_part.ends_with(".webp")) {
+                        
+                        let new_path = format!("{}/{}", abs_path, path_part);
+                        new_line = line.replace(&format!("]({})", path_part), &format!("]({})", new_path));
+                    }
+                }
+            }
+            result.push_str(&new_line);
+        } else {
+            result.push_str(line);
+        }
+        result.push('\n');
+    }
+    
+    Ok(result)
 }
 
 fn extract_text_body(reader: &mut Reader<&[u8]>) -> Result<String, String> {

@@ -1,14 +1,121 @@
 use std::io::{Cursor, Read};
 use std::collections::HashMap;
+use std::process::Command;
+use std::path::Path;
 use zip::ZipArchive;
 use docx_rust::{
     document::{BodyContent, TableCellContent, TableRowContent, ParagraphContent},
     DocxFile,
 };
-use crate::generator::image2md;
+use crate::generator::image2md::{self, ImageProcessingMode};
+use crate::config::SETTINGS;
 
 pub fn run(file_stream: &[u8]) -> Result<String, String> {
-    run_with_images(file_stream)
+    // Check if pandoc is available
+    if is_pandoc_available() {
+        run_with_pandoc(file_stream)
+    } else {
+        run_with_images(file_stream)
+    }
+}
+
+fn is_pandoc_available() -> bool {
+    Command::new("pandoc")
+        .arg("--version")
+        .output()
+        .is_ok()
+}
+
+fn run_with_pandoc(file_stream: &[u8]) -> Result<String, String> {
+    let cfg = &SETTINGS;
+    
+    // Create a temporary file for the DOCX input
+    let temp_dir = std::env::temp_dir();
+    let input_path = temp_dir.join("temp_input.docx");
+    let output_path = temp_dir.join("temp_output.md");
+    
+    // Write DOCX data to temporary file
+    std::fs::write(&input_path, file_stream)
+        .map_err(|e| format!("Failed to write temporary DOCX file: {}", e))?;
+    
+    // Prepare pandoc command
+    let mut cmd = Command::new("pandoc");
+    cmd.arg(&input_path)
+        .arg("-o")
+        .arg(&output_path)
+        .arg("-f")
+        .arg("docx")
+        .arg("-t")
+        .arg("markdown");
+    
+    // Handle image extraction based on configuration
+    if !cfg.image_path.as_os_str().is_empty() {
+        // Extract images to configured directory
+        cmd.arg("--extract-media")
+            .arg(&cfg.image_path);
+    }
+    
+    // Execute pandoc
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to execute pandoc: {}", e))?;
+    
+    if !output.status.success() {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Pandoc execution failed: {}", error_msg));
+    }
+    
+    // Read the generated markdown
+    let mut markdown = std::fs::read_to_string(&output_path)
+        .map_err(|e| format!("Failed to read pandoc output: {}", e))?;
+    
+    // Clean up temporary files
+    let _ = std::fs::remove_file(&input_path);
+    let _ = std::fs::remove_file(&output_path);
+    
+    // Post-process images if needed
+    if !cfg.image_path.as_os_str().is_empty() {
+        markdown = process_pandoc_images(markdown)?;
+    } else {
+        // Convert image references to base64 if no image_path is configured
+        markdown = convert_image_refs_to_base64(markdown)?;
+    }
+    
+    Ok(markdown)
+}
+
+fn process_pandoc_images(markdown: String) -> Result<String, String> {
+    let cfg = &SETTINGS;
+    
+    // If we have an output path, calculate relative paths
+    if let Some(output_path) = &cfg.output_path {
+        if !output_path.as_os_str().is_empty() {
+            // Calculate relative path from output to images
+            let relative_path = if let Ok(rel) = cfg.image_path.strip_prefix(output_path.parent().unwrap_or(Path::new("."))) {
+                rel.to_string_lossy().to_string()
+            } else {
+                // If can't make relative, use the configured image path
+                cfg.image_path.to_string_lossy().to_string()
+            };
+            
+            // Replace image paths in markdown to use relative paths
+            let updated = markdown.replace(
+                &format!("]({})", cfg.image_path.to_string_lossy()),
+                &format!("]({})", relative_path)
+            );
+            return Ok(updated);
+        }
+    }
+    
+    // If no output path or empty output path, use absolute paths
+    Ok(markdown)
+}
+
+fn convert_image_refs_to_base64(markdown: String) -> Result<String, String> {
+    // This is a simplified approach - in practice, you'd need to parse the markdown
+    // and find image references, read the files, and convert them to base64
+    // For now, we'll return the markdown as-is since pandoc without --extract-media
+    // should embed images differently
+    Ok(markdown)
 }
 
 fn run_with_images(file_stream: &[u8]) -> Result<String, String> {
@@ -109,8 +216,8 @@ fn process_paragraph(
                             text_content.push_str(&text.text);
                         }
                         docx_rust::document::RunContent::Drawing(_drawing) => {
-                            // Process embedded images in drawings
-                            if let Some(image_md) = process_drawing_images(images)? {
+                            // Process embedded images in drawings with proper mode
+                            if let Some(image_md) = process_drawing_images_with_mode(images)? {
                                 text_content.push_str(&image_md);
                             }
                         }
@@ -139,10 +246,17 @@ fn process_paragraph(
     }
 }
 
-fn process_drawing_images(images: &HashMap<String, Vec<u8>>) -> Result<Option<String>, String> {
+fn process_drawing_images_with_mode(images: &HashMap<String, Vec<u8>>) -> Result<Option<String>, String> {
+    let cfg = &SETTINGS;
+    
+    // Determine processing mode based on configuration
+    let mode = if cfg.image_path.as_os_str().is_empty() {
+        ImageProcessingMode::Base64
+    } else {
+        ImageProcessingMode::SaveToFile
+    };
+    
     // Process the first available image (simplified approach)
-    // In a more sophisticated implementation, we would parse the drawing XML
-    // to find the specific image reference
     for (filename, image_data) in images {
         if filename.ends_with(".png") || 
            filename.ends_with(".jpg") || 
@@ -150,11 +264,43 @@ fn process_drawing_images(images: &HashMap<String, Vec<u8>>) -> Result<Option<St
            filename.ends_with(".gif") ||
            filename.ends_with(".webp") {
             
-            let image_md = image2md::run(image_data)?;
-            return Ok(Some(format!("\n\n{}\n\n", image_md)));
+            let image_md = image2md::run_with_mode(image_data, mode)?;
+            
+            // Handle relative paths if needed
+            let final_md = if !cfg.image_path.as_os_str().is_empty() {
+                adjust_image_path_in_markdown(image_md)?
+            } else {
+                image_md
+            };
+            
+            return Ok(Some(format!("\n\n{}\n\n", final_md)));
         }
     }
     Ok(None)
+}
+
+fn adjust_image_path_in_markdown(markdown: String) -> Result<String, String> {
+    let cfg = &SETTINGS;
+    
+    // If we have an output path, try to make image paths relative
+    if let Some(output_path) = &cfg.output_path {
+        if !output_path.as_os_str().is_empty() {
+            // Calculate relative path from output directory to image directory
+            let output_dir = output_path.parent().unwrap_or(Path::new("."));
+            
+            if let Ok(relative_path) = cfg.image_path.strip_prefix(output_dir) {
+                // Replace absolute image paths with relative ones
+                let relative_str = relative_path.to_string_lossy();
+                return Ok(markdown.replace(
+                    &format!("]({})", cfg.image_path.to_string_lossy()),
+                    &format!("]({})", relative_str)
+                ));
+            }
+        }
+    }
+    
+    // If no output path configured or can't make relative, return as-is
+    Ok(markdown)
 }
 
 fn check_style_for_heading(style_name: &str) -> Option<(bool, usize)> {

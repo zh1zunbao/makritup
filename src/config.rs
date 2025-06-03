@@ -12,12 +12,13 @@
 use config::{Config, ConfigError, Environment, File, FileFormat};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::{env, path::PathBuf, fs};
+use std::{env, fs, path::PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub model_path: PathBuf,
     pub image_path: PathBuf,
+    pub output_path: Option<PathBuf>,
     pub is_ai_enpower: bool,
     pub doubao_api_key: Option<String>,
 }
