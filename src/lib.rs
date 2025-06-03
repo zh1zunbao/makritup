@@ -25,6 +25,7 @@ fn get_file_type_from_extension(file_path: &Option<String>) -> Option<&'static s
         "jpg" | "jpeg" => Some("image/jpeg"),
         "png" => Some("image/png"),
         "gif" => Some("image/gif"),
+        "html" | "htm" => Some("text/html"),
         _ => None,
     }
 }
@@ -36,8 +37,8 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
 
     let mut mime_type = kind.mime_type();
 
-    // Fallback to extension-based detection for ZIP files (Office documents)
-    if mime_type == "application/zip" {
+    // Fallback to extension-based detection for ZIP files (Office documents) and text files
+    if mime_type == "application/zip" || mime_type == "text/plain" {
         if let Some(extension_mime) = get_file_type_from_extension(&file.file_path) {
             mime_type = extension_mime;
         }
@@ -94,6 +95,10 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
         "text/csv" | "application/csv" => {
             generator::csv2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert CSV: {}", e))
+        }
+        "text/html" => {
+            generator::html2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert HTML: {}", e))
         }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
