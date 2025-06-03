@@ -1,5 +1,5 @@
 use infer;
-mod config;
+pub mod config;
 pub mod generator;
 pub mod converter;
 

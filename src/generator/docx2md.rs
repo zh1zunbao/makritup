@@ -27,8 +27,8 @@ fn is_pandoc_available() -> bool {
 }
 
 fn run_with_pandoc(file_stream: &[u8]) -> Result<String, String> {
-    let cfg = &SETTINGS;
-    
+    let cfg = &*SETTINGS.read().unwrap();
+
     // Create a temporary file for the DOCX input
     let temp_dir = std::env::temp_dir();
     let input_path = temp_dir.join("temp_input.docx");
@@ -84,25 +84,27 @@ fn run_with_pandoc(file_stream: &[u8]) -> Result<String, String> {
 }
 
 fn process_pandoc_images(markdown: String) -> Result<String, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // If we have an output path, calculate relative paths
     if let Some(output_path) = &cfg.output_path {
         if !output_path.as_os_str().is_empty() {
-            // Calculate relative path from output to images
-            let relative_path = if let Ok(rel) = cfg.image_path.strip_prefix(output_path.parent().unwrap_or(Path::new("."))) {
-                rel.to_string_lossy().to_string()
-            } else {
-                // If can't make relative, use the configured image path
-                cfg.image_path.to_string_lossy().to_string()
-            };
+            // Calculate relative path from output file's directory to image directory
+            let output_dir = output_path.parent().unwrap_or(Path::new("."));
             
-            // Replace image paths in markdown to use relative paths
-            let updated = markdown.replace(
-                &format!("]({})", cfg.image_path.to_string_lossy()),
-                &format!("]({})", relative_path)
-            );
-            return Ok(updated);
+            // Pandoc creates a 'media' subdirectory under the specified extract-media path
+            let pandoc_media_path = cfg.image_path.join("media");
+            
+            if let Ok(relative_path) = pandoc_media_path.strip_prefix(output_dir) {
+                let relative_str = relative_path.to_string_lossy();
+                
+                // Replace pandoc's absolute media paths with relative paths  
+                let updated = markdown.replace(
+                    &format!("]({})", pandoc_media_path.to_string_lossy()),
+                    &format!("](./{})", relative_str)
+                );
+                return Ok(updated);
+            }
         }
     }
     
@@ -247,7 +249,7 @@ fn process_paragraph(
 }
 
 fn process_drawing_images_with_mode(images: &HashMap<String, Vec<u8>>) -> Result<Option<String>, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // Determine processing mode based on configuration
     let mode = if cfg.image_path.as_os_str().is_empty() {
@@ -280,12 +282,12 @@ fn process_drawing_images_with_mode(images: &HashMap<String, Vec<u8>>) -> Result
 }
 
 fn adjust_image_path_in_markdown(markdown: String) -> Result<String, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // If we have an output path, try to make image paths relative
     if let Some(output_path) = &cfg.output_path {
         if !output_path.as_os_str().is_empty() {
-            // Calculate relative path from output directory to image directory
+            // Calculate relative path from output file's directory to image directory
             let output_dir = output_path.parent().unwrap_or(Path::new("."));
             
             if let Ok(relative_path) = cfg.image_path.strip_prefix(output_dir) {
@@ -293,7 +295,7 @@ fn adjust_image_path_in_markdown(markdown: String) -> Result<String, String> {
                 let relative_str = relative_path.to_string_lossy();
                 return Ok(markdown.replace(
                     &format!("]({})", cfg.image_path.to_string_lossy()),
-                    &format!("]({})", relative_str)
+                    &format!("](./{})", relative_str)
                 ));
             }
         }

@@ -118,7 +118,7 @@ fn process_image_element(
     element: &quick_xml::events::BytesStart,
     images: &HashMap<String, Vec<u8>>
 ) -> Result<Option<String>, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // Determine processing mode based on configuration
     let mode = if cfg.image_path.as_os_str().is_empty() {
@@ -165,7 +165,7 @@ fn process_image_element(
 }
 
 fn adjust_image_path_in_markdown(markdown: String) -> Result<String, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // If we have an output path and it's not empty, try to make image paths relative
     if let Some(output_path) = &cfg.output_path {

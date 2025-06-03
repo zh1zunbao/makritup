@@ -39,7 +39,7 @@ fn retrieve_wave_samples(stream: &[u8]) -> Result<(Vec<i16>, u32), String> {
 
 pub fn run(file_stream: &[u8]) -> Result<String, String> {
 
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     let model_path = cfg.model_path.to_str()
         .ok_or_else(|| "Failed to convert model path to string".to_string())?;
 

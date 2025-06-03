@@ -9,7 +9,7 @@ pub enum ImageProcessingMode {
 
 
 pub fn run(file_stream: &[u8]) -> Result<String, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
     
     // Determine mode based on global config: if image_path is empty, use base64
     let mode = if cfg.image_path.as_os_str().is_empty() {
@@ -23,7 +23,7 @@ pub fn run(file_stream: &[u8]) -> Result<String, String> {
 
 
 pub fn run_with_mode(file_stream: &[u8], mode: ImageProcessingMode) -> Result<String, String> {
-    let cfg = &SETTINGS;
+    let cfg = &*SETTINGS.read().unwrap();
 
     if file_stream.is_empty() {
         return Err("Input stream is empty".to_string());
@@ -105,7 +105,8 @@ fn call_doubao_api(encoded_image: &str, mime_type: &str) -> Result<String, Box<d
     
     // Doubao API endpoint and key (you should configure these in your SETTINGS)
     let api_url = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
-    let api_key = &SETTINGS.doubao_api_key.as_ref()
+    let cfg = &*SETTINGS.read().unwrap();
+    let api_key = cfg.doubao_api_key.as_ref()
         .ok_or("Doubao API key not configured")?;
     
     // Prepare the request payload using serde_json::json! macro
