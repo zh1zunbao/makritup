@@ -72,4 +72,22 @@ args = ["run", "--bin", "markitup", "--", "bench/test.docx"]
 description = "Run the project with an image file"
 dependencies = ["build"]
 command = "cargo"
-args = ["run", "--bin", "markitup", "--", "bench/test.png"]
+args = ["run", "--bin", "markitup", "--", "bench/test.jpg"]
+
+[tasks.run-pptx]
+description = "Run the project with a PPTX file"
+dependencies = ["build"]
+command = "cargo"
+args = ["run", "--bin", "markitup", "--", "bench/test.pptx"]
+
+[tasks.run-xlsx]
+description = "Run the project with an XLSX file"
+dependencies = ["build"]
+command = "cargo"
+args = ["run", "--bin", "markitup", "--", "bench/test.xlsx"]
+
+[tasks.run-csv]
+description = "Run the project with a CSV file"
+dependencies = ["build"]
+command = "cargo"
+args = ["run", "--bin", "markitup", "--", "bench/test.csv"]
