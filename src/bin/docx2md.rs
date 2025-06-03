@@ -1,4 +1,4 @@
-use markitup::converter::docx2md::run;
+use markitup::generator::docx2md::run;
 use std::env;
 
 fn main() {

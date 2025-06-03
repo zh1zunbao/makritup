@@ -2,7 +2,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
-use crate::converter::image2md;
+use crate::generator::image2md;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-use markitup::converter::image2md::run;
+use markitup::generator::image2md::run;
 use std::env;
 
 fn main() {

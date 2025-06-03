@@ -5,7 +5,7 @@ use docx_rust::{
     document::{BodyContent, TableCellContent, TableRowContent, ParagraphContent},
     DocxFile,
 };
-use crate::converter::image2md;
+use crate::generator::image2md;
 
 pub fn run(file_stream: &[u8]) -> Result<String, String> {
     run_with_images(file_stream)

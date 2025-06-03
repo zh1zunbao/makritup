@@ -1,4 +1,4 @@
-use markitup::converter::wav2md::run;
+use markitup::generator::wav2md::run;
 use std::env;
 
 fn main() {

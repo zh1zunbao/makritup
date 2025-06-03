@@ -1,6 +1,6 @@
 use infer;
 mod config;
-pub mod converter;
+pub mod generator;
 
 pub struct ConverterFile {
     pub file_path: Option<String>,
@@ -20,19 +20,19 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
 
     match mime_type {
         "audio/x-wav" | "audio/wav" | "audio/wave" => {
-            converter::wav2md::run(&file.file_stream)
+            generator::wav2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert WAV: {}", e))
         }
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
-            converter::docx2md::run(&file.file_stream)
+            generator::docx2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert DOCX: {}", e))
         }
         "image/jpeg" | "image/png" | "image/gif" => {
-            converter::image2md::run(&file.file_stream)
+            generator::image2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert image: {}", e))
         }
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
-            converter::pptx2md::run(&file.file_stream)
+            generator::pptx2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert PPTX: {}", e))
         }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
