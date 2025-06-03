@@ -31,6 +31,10 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
             converter::image2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert image: {}", e))
         }
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
+            converter::pptx2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert PPTX: {}", e))
+        }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
 }
