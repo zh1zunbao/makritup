@@ -53,6 +53,19 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
             generator::wav2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert WAV: {}", e))
         }
+        "audio/mpeg" | "audio/mp3" | "audio/flac" | "audio/ogg" | "audio/aac" | "audio/x-m4a" => {
+            // Convert other audio formats to WAV first
+            let wav_data = converter::audio2wav::audio_to_wav(&file.file_stream)
+                .map_err(|e| format!("Failed to convert audio to WAV: {:?}", e))?;
+
+            // printf information when debug
+            if cfg!(debug_assertions) {
+                dbg!(wav_data.len());
+            }
+            
+            generator::wav2md::run(&wav_data)
+                .map_err(|e| format!("Failed to convert WAV: {}", e))
+        }
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
             generator::docx2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert DOCX: {}", e))
