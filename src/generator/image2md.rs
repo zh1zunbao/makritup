@@ -111,7 +111,7 @@ fn call_doubao_api(encoded_image: &str, mime_type: &str) -> Result<String, Box<d
     
     // Prepare the request payload using serde_json::json! macro
     let payload = json!({
-        "model": "ep-20241022091020-pcmkf",
+        "model": "doubao-1-5-thinking-vision-pro-250428",
         "messages": [
             {
                 "role": "user",
@@ -135,11 +135,22 @@ fn call_doubao_api(encoded_image: &str, mime_type: &str) -> Result<String, Box<d
     
     // Make HTTP request
     let client = ureq::Agent::new();
+    println!("Sending API request to Doubao: {}", api_url);
     let response = client
         .post(api_url)
         .set("Authorization", &format!("Bearer {}", api_key))
         .set("Content-Type", "application/json")
+        .set("Accept", "application/json")
         .send_json(&payload)?;
+
+    println!("API request sent to Doubao: {}", api_url);
+    // print response status and headers for debugging
+    if response.status() != 200 {
+        println!("API request failed with status: {}", response.status());
+        return Err(format!("API request failed with status: {}", response.status()).into());
+    } else {
+        println!("API request succeeded with status: {}", response.status());
+    }
     
     // Parse response
     let response_json: serde_json::Value = response.into_json()?;
