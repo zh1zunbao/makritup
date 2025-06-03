@@ -19,6 +19,7 @@ pub struct Settings {
     pub model_path: PathBuf,
     pub image_path: PathBuf,
     pub is_ai_enpower: bool,
+    pub doubao_api_key: Option<String>,
 }
 
 
