@@ -1,6 +1,7 @@
 use infer;
 mod config;
 pub mod generator;
+pub mod converter;
 
 pub struct ConverterFile {
     pub file_path: Option<String>,
@@ -34,6 +35,23 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
             generator::pptx2md::run(&file.file_stream)
                 .map_err(|e| format!("Failed to convert PPTX: {}", e))
+        }
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+            let csvs = converter::xlsx2csv::xlsx_to_csv(&file.file_stream, None)
+                .map_err(|e| format!("Failed to convert XLSX: {}", e))?;
+            for (name, csv) in csvs.sheet_names.iter().zip(csvs.csv_data.iter()) {
+                if cfg!(debug_assertions) {
+                    dbg!(name);
+                }
+                let md = generator::csv2md::run(csv.as_bytes())
+                    .map_err(|e| format!("Failed to convert CSV for sheet '{}': {}", name, e))?;
+                return Ok(md);
+            }
+            Err("No sheets found in XLSX file".to_string())
+        }
+        "text/csv" | "application/csv" => {
+            generator::csv2md::run(&file.file_stream)
+                .map_err(|e| format!("Failed to convert CSV: {}", e))
         }
         _ => Err(format!("Unsupported file type: {}", mime_type)),
     }
