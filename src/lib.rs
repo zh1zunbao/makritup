@@ -67,15 +67,29 @@ pub fn convert(file: ConverterFile) -> Result<String, String> {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
             let csvs = converter::xlsx2csv::xlsx_to_csv(&file.file_stream, None)
                 .map_err(|e| format!("Failed to convert XLSX: {}", e))?;
+            
+            let mut combined_md = String::new();
+            
             for (name, csv) in csvs.sheet_names.iter().zip(csvs.csv_data.iter()) {
                 if cfg!(debug_assertions) {
                     dbg!(name);
                 }
                 let md = generator::csv2md::run(csv.as_bytes())
                     .map_err(|e| format!("Failed to convert CSV for sheet '{}': {}", name, e))?;
-                return Ok(md);
+                
+                // Add sheet name as header and the markdown content
+                if !combined_md.is_empty() {
+                    combined_md.push_str("\n\n---\n\n");
+                }
+                combined_md.push_str(&format!("## Sheet: {}\n\n", name));
+                combined_md.push_str(&md);
             }
-            Err("No sheets found in XLSX file".to_string())
+            
+            if combined_md.is_empty() {
+                Err("No sheets found in XLSX file".to_string())
+            } else {
+                Ok(combined_md)
+            }
         }
         "text/csv" | "application/csv" => {
             generator::csv2md::run(&file.file_stream)
