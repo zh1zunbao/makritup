@@ -4,6 +4,25 @@ use std::path::PathBuf;
 use rfd::FileDialog;
 use pulldown_cmark::{Parser,Options};
 use egui_commonmark::CommonMarkViewer;
+use std::thread;
+use std::sync::{Arc,Mutex};
+use crossbeam_channel::{unbounded, Sender, Receiver}; // 引入 crossbeam_channel
+use regex::Regex;
+
+#[derive(Debug,PartialEq,Clone)]
+enum ConvertState{
+    Idle,
+    Converting(String),
+    Down(String),
+    Error(String),
+}
+
+
+impl Default for ConvertState{
+    fn default() -> Self{
+        ConvertState:: Idle
+    }
+}
 
 #[derive(Debug)]
 enum RightPanelMode{
@@ -16,21 +35,68 @@ impl Default for RightPanelMode{
         RightPanelMode::Preview
     }
 }
+enum WorkerMessage {
+    ConversionResult {
+        full_markdown: String,   // 完整的 Markdown 内容
+        display_markdown: String, // 经过 Base64 替换后的 Markdown 内容，用于编辑器显示
+    },
+    Error(String), // 转换过程中发生的错误
+}
 
-#[derive(Default)]
+fn replace_base64_in_markdown(markdown:&str) ->String{
+    let re = Regex::new(r"\((data:image/[^;]+;base64,[^)]+)\)").unwrap();
+    re.replace_all(markdown, "(base64_image_placeholder)").into_owned()
+}
+
 pub struct UIFramework{
     show_config_panel:bool,
     show_help_panel:bool,
-    
-
-    editor_markdown_content:String,
-    is_file_dialog_open:bool,
     
     file_list: Vec<PathBuf>,
     select_file_path: Option<PathBuf>,
     current_markdown_content: String,
     right_panel_mode: RightPanelMode,
     markdown_cache:egui_commonmark::CommonMarkCache,
+
+    //window sytle
+    pub font_size_heading :f32,
+    pub font_size_body:f32,
+    pub background_color: egui::Color32,
+    pub text_color: egui::Color32,
+    
+    //convert state
+    convert_state: Arc<Mutex<ConvertState>>,
+    pub egui_ctx: egui::Context,
+    pub worker_sender: Sender<WorkerMessage>,   // 发送给工作线程 (通常不会从UI发送，但Default需要初始化)
+    pub worker_receiver: Receiver<WorkerMessage>,
+}
+impl Default for UIFramework{
+
+    
+    fn default()->Self{
+        let (tx, rx) = unbounded();
+        Self{
+            show_config_panel:false,
+            show_help_panel:false,
+
+            file_list:Vec::new(),
+            select_file_path:None,
+            current_markdown_content: String::new(),
+            right_panel_mode: RightPanelMode::default(),
+            markdown_cache: egui_commonmark::CommonMarkCache::default(),
+
+            font_size_heading:25.0,
+            font_size_body:18.0,
+            background_color:egui::Color32::from_rgb(27, 27, 27),
+            text_color: egui::Color32::WHITE,
+            convert_state: Arc::new(Mutex::new(ConvertState::Idle)), 
+            egui_ctx: egui::Context::default(),
+
+            worker_sender: tx,
+            worker_receiver: rx,
+        }
+
+    }
 }
 
 impl eframe::App for UIFramework{
@@ -203,11 +269,11 @@ pub fn createFrame(){
 impl UIFramework{
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default(); 
-        
+        app.egui_ctx = cc.egui_ctx.clone();
         let mut fonts= egui::FontDefinitions::default();
         fonts.font_data.insert(
             "my_custom_font".to_owned(), // Give your font a unique name within egui
-            egui::FontData::from_static(include_bytes!("../font.ttf")), // Adjust path as needed
+            egui::FontData::from_static(include_bytes!("../../font.ttf")), // Adjust path as needed
         );
             fonts.families.get_mut(&egui::FontFamily::Proportional)
                 .unwrap()
@@ -216,6 +282,19 @@ impl UIFramework{
                 .unwrap()
                 .insert(0, "my_custom_font".to_owned());
         cc.egui_ctx.set_fonts(fonts);
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(app.font_size_heading)); // 使用标题字号作为按钮字号
+        style.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(app.font_size_body));
+        style.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(app.font_size_heading));
+
+        // 设置颜色
+        style.visuals.window_fill = app.background_color;
+        style.visuals.panel_fill = app.background_color;
+        //style.visuals.text_color = app.text_color; // 默认文本颜色
+
+        cc.egui_ctx.set_style(style);
+
+        cc.egui_ctx.set_pixels_per_point(1.2);
         app
     }
 
@@ -262,6 +341,48 @@ impl UIFramework{
             // add ui?
         }
     }
+    pub fn load_and_set_markdown_content(&mut self, path_buf: &PathBuf) {
+        self.select_file_path = Some(path_buf.clone());
+        let file_name_str = path_buf.file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .into_owned();
+
+        // 2. 将转换状态设置为 "Converting"，以便 UI 可以显示加载提示
+        *self.convert_state.lock().unwrap() = ConvertState::Converting(file_name_str.clone());
+
+        // 3. 克隆必要的变量以发送到新线程
+        let ui_ctx = self.egui_ctx.clone(); // egui context 用于请求 UI 重绘
+        let convert_state_arc = Arc::clone(&self.convert_state); // 共享转换状态
+        let path_for_thread = path_buf.clone(); // 要转换的文件路径
+        let sender_for_thread = self.worker_sender.clone(); // 用于将结果发送回主线程
+
+        // 4. 启动一个新线程来执行耗时操作
+        thread::spawn(move || {
+            // 尝试将 PathBuf 转换为 &str，如果失败则返回错误
+            let result = if let Some(path_str) = path_for_thread.to_str() {
+                // 调用您的 markitup 库进行转换
+                markitup::convert_from_path(path_str)
+            } else {
+                Err(format!("文件路径包含无效的 UTF-8 字符: {}", path_for_thread.display()))
+            };
+
+            match result {
+                Ok(full_markdown_content) => {
+                    let display_content = replace_base64_in_markdown(&full_markdown_content);
+                    sender_for_thread.send(WorkerMessage::ConversionResult {
+                        full_markdown: full_markdown_content,
+                        display_markdown: display_content,
+                    }).unwrap(); 
+                },
+                Err(e) => {
+                    sender_for_thread.send(WorkerMessage::Error(format!("转换文件 '{}' 失败: {}", file_name_str, e))).unwrap();
+                },
+            }
+            ui_ctx.request_repaint();
+        });
+    }
+    
 }
 
 fn main(){
