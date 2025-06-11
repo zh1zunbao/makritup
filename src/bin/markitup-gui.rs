@@ -8,6 +8,7 @@ use std::thread;
 use std::sync::{Arc,Mutex};
 use crossbeam_channel::{unbounded, Sender, Receiver}; // 引入 crossbeam_channel
 use regex::Regex;
+use markitup::config;
 
 #[derive(Debug,PartialEq,Clone)]
 enum ConvertState{
@@ -71,6 +72,11 @@ pub struct UIFramework{
     pub egui_ctx: egui::Context,
     pub worker_sender: Sender<WorkerMessage>,   // 发送给工作线程 (通常不会从UI发送，但Default需要初始化)
     pub worker_receiver: Receiver<WorkerMessage>,
+    
+    //config
+    pub config_first_input: Option<String>,
+    pub config_second_input: Option<String>,
+    pub config_choice: bool,
 }
 impl Default for UIFramework{
 
@@ -98,6 +104,10 @@ impl Default for UIFramework{
 
             worker_sender: tx,
             worker_receiver: rx,
+            
+            config_first_input: None, // 填空题1的默认值
+            config_second_input: None, // 填空题2的默认值
+            config_choice: false,
         }
 
     }
@@ -277,8 +287,52 @@ impl eframe::App for UIFramework{
             .open(&mut self.show_config_panel)
             .show(ctx,|ui|{
                 ui.heading("config");
+                ui.vertical(|ui| {
                 ui.add_space(10.0);
+                ui.vertical(|ui| {
+                        ui.label("deepseek api key");
+                        let mut text_value = self.config_first_input.get_or_insert_with(String::new);
+
+                            ui.text_edit_singleline(text_value);
+
+                            if text_value.is_empty() {
+                                self.config_first_input = None;
+                            }
+
+                    });
+                    ui.vertical(|ui| {
+                        ui.label("doubao api key");
+                        let mut text_value = self.config_second_input.get_or_insert_with(String::new);
+
+                            ui.text_edit_singleline(text_value);
+
+                            if text_value.is_empty() {
+                                self.config_second_input = None;
+                            }
+                    });
+                    ui.add_space(5.0);
+
+                    // --- 选择题 ---
+                    ui.horizontal(|ui| {
+                        ui.label("Enable AI?");
+                        // egui::RadioButton 是一个很好的选择题组件
+                        // 第一个选项
+                        ui.radio_value(&mut self.config_choice, false, "No");
+                        // 第二个选项
+                        ui.radio_value(&mut self.config_choice, true, "Yes");
+                    });
+                    ui.add_space(10.0);
+
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    if ui.button("Apply Settings").clicked(){
+                        config::set_is_ai_enpower(self.config_choice);
+                        config::set_deepseek_api_key(self.config_first_input);
+                        config::set_doubao_api_key(self.config_second_input);
+                    }
             });
+        });
         }
         if self.show_help_panel{
             egui::Window::new("help")
