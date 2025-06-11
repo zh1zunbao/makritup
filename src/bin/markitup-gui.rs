@@ -55,6 +55,8 @@ pub struct UIFramework{
     file_list: Vec<PathBuf>,
     select_file_path: Option<PathBuf>,
     current_markdown_content: String,
+    pub editor_display_content: String, 
+
     right_panel_mode: RightPanelMode,
     markdown_cache:egui_commonmark::CommonMarkCache,
 
@@ -82,6 +84,8 @@ impl Default for UIFramework{
             file_list:Vec::new(),
             select_file_path:None,
             current_markdown_content: String::new(),
+            editor_display_content: String::new(),
+
             right_panel_mode: RightPanelMode::default(),
             markdown_cache: egui_commonmark::CommonMarkCache::default(),
 
@@ -101,6 +105,23 @@ impl Default for UIFramework{
 
 impl eframe::App for UIFramework{
     fn update(&mut self, ctx: &egui::Context, _frame:&mut eframe::Frame){
+        let mut clicked_file_path: Option<PathBuf> = None;
+        while let Ok(msg) = self.worker_receiver.try_recv() {
+            let mut state_guard = self.convert_state.lock().unwrap(); // 获取转换状态的锁
+            match msg {
+                WorkerMessage::ConversionResult { full_markdown, display_markdown } => {
+                    // 如果收到了成功转换的消息
+                    self.current_markdown_content = full_markdown; // 更新完整 Markdown 内容
+                    self.editor_display_content = display_markdown; // 更新编辑器显示内容
+                    *state_guard = ConvertState::Idle; // 转换完成，将状态重置为 Idle
+                    // 注意：这里将状态重置为 Idle，以便在下一次更新中可以显示最终内容，
+                    // 而不是一直显示 "Done" 状态。
+                }
+                WorkerMessage::Error(msg) => {
+                    *state_guard = ConvertState::Error(msg); // 更新状态为错误
+                }
+            }
+        }
         egui::TopBottomPanel::top("top_panel").show(ctx,|ui|{
             ui.horizontal(|ui|{
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP),|ui|{
@@ -133,49 +154,73 @@ impl eframe::App for UIFramework{
                     ui.separator();
 
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        let file_list_guard = &self.file_list;
-                        if file_list_guard.is_empty() {
-                            ui.label("Please add files.");
-                        } else {
-                        let mut selected_idx = -1; // 用来记录哪个文件被选中
-                            for (idx, path_buf) in self.file_list.iter().enumerate() {
-                                let file_name = path_buf.file_name().unwrap_or_default().to_string_lossy();
-                                let is_selected = self.select_file_path.as_ref() == Some(path_buf);
+                        let mut indices_to_remove = Vec::new();
+                        
+                        for (idx, path_buf) in self.file_list.iter().enumerate() {
+                            let file_name = path_buf.file_name().unwrap_or_default().to_string_lossy();
+                            let is_selected = self.select_file_path.as_ref() == Some(path_buf);
 
-                                let response = ui.selectable_value(&mut is_selected.clone(), true, file_name);
+                            ui.horizontal(|ui| {
+                                // 文件名标签 (可选中)
+                                let response = if is_selected {
+                                    ui.selectable_label(true, file_name.as_ref())
+                                } else {
+                                    ui.selectable_label(false, file_name.as_ref())
+                                };
 
                                 if response.clicked() {
-                                    self.select_file_path = Some(path_buf.clone());
-                                    if let Some(path) = &self.select_file_path {
-                                        if let Some(path_str) = path.to_str(){
-                                            dbg!(path_str);
-                                            let content= markitup::convert_from_path(path_str);
-                                            match content{
-                                                Ok(content)=>{
-                                                    self.current_markdown_content=content;
-                                                    self.right_panel_mode=RightPanelMode::Preview;
-                                                }
-                                                Err(content)=>{
-                                                    eprintln!("error convert: {}", content);
-                                                }
-                                            }
-                                        }
-                                        else {
-                                            eprintln!("invalid file path!{}",path.display());
-                                        }
-                                        
+                                    if !is_selected {
+                                        clicked_file_path = Some(path_buf.clone()); // 克隆路径并存储
                                     }
-                                    else{
-                                       println!("Please select files!") // add new ui??
-                                    }
-                                    
                                 }
-                            }//end for 
-                        }//end else
+
+                                // 添加删除按钮 (靠右对齐)
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let delete_response = ui.add(
+                                        egui::Button::new("❌")
+                                            .small()
+                                            .frame(false)
+                                            .fill(egui::Color32::TRANSPARENT)
+                                            .stroke(egui::Stroke::NONE)
+                                            
+                                    )
+                                    .on_hover_text("从列表移除");
+
+                                    if delete_response.clicked() {
+                                        indices_to_remove.push(idx); // 记录索引
+                                    }
+                                });
+                            }); // end horizontal for each file item
+                        } // end for loop
+
+                        // 在遍历结束后，从后往前删除元素以避免索引问题
+                        for &idx in indices_to_remove.iter().rev() {
+                            let removed_path = self.file_list.remove(idx);
+                            println!("Removed file from list: {:?}", removed_path.file_name().unwrap_or_default());
+
+                            // 如果被移除的是当前选中的文件，则清除相关状态
+                            if self.select_file_path.as_ref() == Some(&removed_path) {
+                                self.select_file_path = None;
+                                self.current_markdown_content.clear();
+                                self.editor_display_content.clear();
+                                *self.convert_state.lock().unwrap() = ConvertState::Idle; // 重置转换状态
+                            }
+                        }
+
+                        // 如果文件列表变空了，且之前有选中文件，确保状态被清除
+                        if self.file_list.is_empty() && self.select_file_path.is_some() {
+                             self.select_file_path = None;
+                             self.current_markdown_content.clear();
+                             self.editor_display_content.clear();
+                             *self.convert_state.lock().unwrap() = ConvertState::Idle;
+                        }
                         }); // end scroll area;
 
                     });//end vertical_centered
             });//end left side panel
+            if let Some(path_to_load) = clicked_file_path {
+                self.load_and_set_markdown_content(&path_to_load);
+            }
             egui::CentralPanel::default().show_inside(ui,|ui|{
                 ui.vertical(|ui|{
                     ui.heading(match self.right_panel_mode{
