@@ -146,11 +146,7 @@ impl eframe::App for UIFramework{
                         self.show_config_panel=!self.show_config_panel;
                         self.show_help_panel=false;
                     }
-                    if ui.button("help").clicked() {
-                        println!("点击了 help 按钮");
-                        self.show_help_panel=!self.show_help_panel;
-                        self.show_config_panel=false;
-                    }
+                    
                 });//left_to_right end
                     
   
