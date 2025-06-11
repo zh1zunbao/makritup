@@ -185,18 +185,40 @@ pub fn createFrame(){
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0]) // 初始窗口大小
-            .with_min_inner_size([300.0, 200.0]), // 最小窗口大小
+            .with_inner_size([1500.0, 1200.0]) // 初始窗口大小
+            .with_min_inner_size([300.0, 200.0]) // 最小窗口大小
+            .with_title(app_name),
+        vsync:true,
+        multisampling:4,
         ..Default::default()
+
     };
     let app=UIFramework::default();
     eframe::run_native(
         app_name,
         native_options,
-        Box::new(|_cc| Box::new(UIFramework::default())),
+        Box::new(|cc| Box::new(UIFramework::new(cc))),
         );
 }
 impl UIFramework{
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut app = Self::default(); 
+        
+        let mut fonts= egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "my_custom_font".to_owned(), // Give your font a unique name within egui
+            egui::FontData::from_static(include_bytes!("../font.ttf")), // Adjust path as needed
+        );
+            fonts.families.get_mut(&egui::FontFamily::Proportional)
+                .unwrap()
+                .insert(0, "my_custom_font".to_owned());
+            fonts.families.get_mut(&egui::FontFamily::Monospace)
+                .unwrap()
+                .insert(0, "my_custom_font".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
+        app
+    }
+
     fn open_files_dialog(&mut self) {
         let result = FileDialog::new()
             .set_title("Select files")
